@@ -19,6 +19,7 @@ import (
 
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -1837,20 +1838,17 @@ func (r *rpcServer) GetInfo(ctx context.Context,
 
 	// TODO(roasbeef): add synced height n stuff
 	return &lnrpc.GetInfoResponse{
-		IdentityPubkey:      encodedIDPub,
-		NumPendingChannels:  nPendingChannels,
-		NumActiveChannels:   activeChannels,
-		NumInactiveChannels: inactiveChannels,
-		NumPeers:            uint32(len(serverPeers)),
-		BlockHeight:         uint32(bestHeight),
-		BlockHash:           bestHash.String(),
-		SyncedToChain:       isSynced,
-		Testnet:             isTestnet(&activeNetParams),
-		Chains:              activeChains,
-		Uris:                uris,
-		Alias:               nodeAnn.Alias.String(),
-		BestHeaderTimestamp: int64(bestHeaderTimestamp),
-		Version:             build.Version(),
+		IdentityPubkey:     encodedIDPub,
+		NumPendingChannels: nPendingChannels,
+		NumActiveChannels:  activeChannels,
+		NumPeers:           uint32(len(serverPeers)),
+		BlockHeight:        uint32(bestHeight),
+		BlockHash:          bestHash.String(),
+		SyncedToChain:      isSynced,
+		Testnet:            activeNetParams.Params == &chaincfg.TestNet3Params,
+		Chains:             activeChains,
+		Uris:               uris,
+		Alias:              nodeAnn.Alias.String(),
 	}, nil
 }
 
