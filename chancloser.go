@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/lightningnetwork/lnd/channeldb"
@@ -151,7 +150,7 @@ type channelCloser struct {
 // passed configuration, and delivery+fee preference. The final argument should
 // only be populated iff, we're the initiator of this closing request.
 func newChannelCloser(cfg chanCloseCfg, deliveryScript []byte,
-	idealFeePerkw btcutil.Amount, negotiationHeight uint32,
+	idealFeePerKw lnwallet.SatPerKWeight, negotiationHeight uint32,
 	closeReq *htlcswitch.ChanClose,
 	closeCtx *contractcourt.CooperativeCloseCtx) *channelCloser {
 
@@ -159,9 +158,7 @@ func newChannelCloser(cfg chanCloseCfg, deliveryScript []byte,
 	// fee will be starting at for this fee negotiation.
 	//
 	// TODO(roasbeef): should factor in minimal commit
-	idealFeeSat := btcutil.Amount(
-		cfg.channel.CalcFee(uint64(idealFeePerkw)),
-	)
+	idealFeeSat := cfg.channel.CalcFee(idealFeePerKw)
 
 	// If this fee is greater than the fee currently present within the
 	// commitment transaction, then we'll clamp it down to be within the
@@ -439,19 +436,7 @@ func (c *channelCloser) ProcessCloseMsg(msg lnwire.Message) ([]lnwire.Message, b
 				return spew.Sdump(closeTx)
 			}))
 		if err := c.cfg.broadcastTx(closeTx); err != nil {
-			// TODO(halseth): add relevant error types to the
-			// WalletController interface as this is quite fragile.
-			switch {
-			case strings.Contains(err.Error(), "already exists"):
-				fallthrough
-			case strings.Contains(err.Error(), "already have"):
-				peerLog.Debugf("channel close tx from "+
-					"ChannelPoint(%v) already exist, "+
-					"probably broadcast by peer: %v",
-					c.chanPoint, err)
-			default:
-				return nil, false, err
-			}
+			return nil, false, err
 		}
 
 		// Clear out the current channel state, marking the channel as

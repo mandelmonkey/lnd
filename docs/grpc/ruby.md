@@ -44,7 +44,7 @@ Two files will be generated in the current directory:
 
 ### Example - Simple client to display wallet balance
 
-Everytime you use the Ruby gRPC you need to require the `rpc_services_pb` file.
+Every time you use the Ruby gRPC you need to require the `rpc_services_pb` file.
 
 We assume that `lnd` runs on the default `localhost:10009`.
 
@@ -90,7 +90,7 @@ end
 Now, create an invoice on your node:
 
 ```bash
-$ lncli addinvoice --value=590
+$ lncli addinvoice --amt=590
 {
 	"r_hash": <R_HASH>,
 	"pay_req": <PAY_REQ>

@@ -8,7 +8,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/boltdb/bolt"
+	"github.com/coreos/bbolt"
 	"github.com/lightningnetwork/lnd/lnwire"
 	"github.com/roasbeef/btcd/wire"
 )
@@ -430,6 +430,12 @@ func settleInvoice(invoices *bolt.Bucket, invoiceNum []byte) error {
 	invoice, err := fetchInvoice(invoiceNum, invoices)
 	if err != nil {
 		return err
+	}
+
+	// Add idempotency to duplicate settles, return here to avoid
+	// overwriting the previous info.
+	if invoice.Terms.Settled {
+		return nil
 	}
 
 	invoice.Terms.Settled = true

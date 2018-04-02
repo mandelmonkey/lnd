@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -995,15 +994,15 @@ func (u *utxoNursery) createSweepTx(kgtnOutputs []kidOutput,
 	utxnLog.Infof("Creating sweep transaction for %v CSV inputs, %v CLTV "+
 		"inputs", len(csvOutputs), len(cltvOutputs))
 
-	txWeight := uint64(weightEstimate.Weight())
-	return u.populateSweepTx(txWeight, classHeight, csvOutputs, cltvOutputs)
+	txVSize := int64(weightEstimate.VSize())
+	return u.populateSweepTx(txVSize, classHeight, csvOutputs, cltvOutputs)
 }
 
 // populateSweepTx populate the final sweeping transaction with all witnesses
 // in place for all inputs using the provided txn fee. The created transaction
 // has a single output sending all the funds back to the source wallet, after
 // accounting for the fee estimate.
-func (u *utxoNursery) populateSweepTx(txWeight uint64, classHeight uint32,
+func (u *utxoNursery) populateSweepTx(txVSize int64, classHeight uint32,
 	csvInputs []CsvSpendableOutput,
 	cltvInputs []SpendableOutput) (*wire.MsgTx, error) {
 
@@ -1023,11 +1022,11 @@ func (u *utxoNursery) populateSweepTx(txWeight uint64, classHeight uint32,
 	}
 
 	// Using the txn weight estimate, compute the required txn fee.
-	feePerWeight, err := u.cfg.Estimator.EstimateFeePerWeight(6)
+	feePerVSize, err := u.cfg.Estimator.EstimateFeePerVSize(6)
 	if err != nil {
 		return nil, err
 	}
-	txFee := btcutil.Amount(txWeight) * feePerWeight
+	txFee := feePerVSize.FeeForVSize(txVSize)
 
 	// Sweep as much possible, after subtracting txn fees.
 	sweepAmt := int64(totalSum - txFee)
@@ -1125,9 +1124,7 @@ func (u *utxoNursery) sweepMatureOutputs(classHeight uint32, finalTx *wire.MsgTx
 	// With the sweep transaction fully signed, broadcast the transaction
 	// to the network. Additionally, we can stop tracking these outputs as
 	// they've just been swept.
-	// TODO(conner): handle concrete error types returned from publication
-	err := u.cfg.PublishTransaction(finalTx)
-	if err != nil && !strings.Contains(err.Error(), "TX rejected:") {
+	if err := u.cfg.PublishTransaction(finalTx); err != nil {
 		utxnLog.Errorf("unable to broadcast sweep tx: %v, %v",
 			err, spew.Sdump(finalTx))
 		return err
@@ -1233,14 +1230,9 @@ func (u *utxoNursery) sweepCribOutput(classHeight uint32, baby *babyOutput) erro
 
 	// We'll now broadcast the HTLC transaction, then wait for it to be
 	// confirmed before transitioning it to kindergarten.
-	//
-	// TODO(conner): handle concrete error types returned from publication
-	err := u.cfg.PublishTransaction(baby.timeoutTx)
-	if err != nil &&
-		!strings.Contains(err.Error(), "TX rejected:") {
+	if err := u.cfg.PublishTransaction(baby.timeoutTx); err != nil {
 		utxnLog.Errorf("Unable to broadcast baby tx: "+
-			"%v, %v", err,
-			spew.Sdump(baby.timeoutTx))
+			"%v, %v", err, spew.Sdump(baby.timeoutTx))
 		return err
 	}
 

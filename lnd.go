@@ -6,8 +6,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -22,6 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,14 +38,17 @@ import (
 	flags "github.com/jessevdk/go-flags"
 	"github.com/lightningnetwork/lnd/autopilot"
 	"github.com/lightningnetwork/lnd/channeldb"
+	"github.com/lightningnetwork/lnd/keychain"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/lnwallet"
+	"github.com/lightningnetwork/lnd/lnwallet/btcwallet"
 	"github.com/lightningnetwork/lnd/lnwire"
 	"github.com/lightningnetwork/lnd/macaroons"
 	"github.com/lightningnetwork/lnd/walletunlocker"
 	"github.com/roasbeef/btcd/btcec"
 	"github.com/roasbeef/btcd/wire"
 	"github.com/roasbeef/btcutil"
+	"github.com/roasbeef/btcwallet/wallet"
 )
 
 const (
@@ -52,6 +57,10 @@ const (
 )
 
 var (
+	//Commit stores the current commit hash of this build. This should be
+	//set using -ldflags during compilation.
+	Commit string
+
 	cfg              *config
 	shutdownChannel  = make(chan struct{})
 	registeredChains = newChainRegistry()
@@ -72,23 +81,12 @@ var (
 	 * - Are available in the Go 1.7.6 standard library (more are
 	 *   available in 1.8.3 and will be added after lnd no longer
 	 *   supports 1.7, including suites that support CBC mode)
-	 *
-	 * The cipher suites are ordered from strongest to weakest
-	 * primitives, but the client's preference order has more
-	 * effect during negotiation.
 	**/
 	tlsCipherSuites = []uint16{
-		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
 		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-		tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
 		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
-		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
 	}
 )
 
@@ -111,6 +109,26 @@ func lndMain() error {
 
 	// Show version at startup.
 	ltndLog.Infof("Version %s", version())
+
+	var network string
+	switch {
+	case cfg.Bitcoin.TestNet3 || cfg.Litecoin.TestNet3:
+		network = "testnet"
+
+	case cfg.Bitcoin.MainNet || cfg.Litecoin.MainNet:
+		network = "mainnet"
+
+	case cfg.Bitcoin.SimNet:
+		network = "simmnet"
+
+	case cfg.Bitcoin.RegTest:
+		network = "regtest"
+	}
+
+	ltndLog.Infof("Active chain: %v (network=%v)",
+		strings.Title(registeredChains.PrimaryChain().String()),
+		network,
+	)
 
 	// Enable http profiling server if requested.
 	if cfg.Profile != "" {
@@ -214,10 +232,15 @@ func lndMain() error {
 			srvrLog.Error(err)
 			return err
 		}
+
 		// Create macaroon files for lncli to use if they don't exist.
-		if !fileExists(cfg.AdminMacPath) && !fileExists(cfg.ReadMacPath) {
-			err = genMacaroons(ctx, macaroonService,
-				cfg.AdminMacPath, cfg.ReadMacPath)
+		if !fileExists(cfg.AdminMacPath) && !fileExists(cfg.ReadMacPath) &&
+			!fileExists(cfg.InvoiceMacPath) {
+
+			err = genMacaroons(
+				ctx, macaroonService, cfg.AdminMacPath,
+				cfg.ReadMacPath, cfg.InvoiceMacPath,
+			)
 			if err != nil {
 				ltndLog.Errorf("unable to create macaroon "+
 					"files: %v", err)
@@ -245,16 +268,41 @@ func lndMain() error {
 	primaryChain := registeredChains.PrimaryChain()
 	registeredChains.RegisterChain(primaryChain, activeChainControl)
 
-	idPrivKey, err := activeChainControl.wallet.GetIdentitykey()
+	// Select the configuration and furnding parameters for Bitcoin or
+	// Litecoin, depending on the primary registered chain.
+	chainCfg := cfg.Bitcoin
+	minRemoteDelay := minBtcRemoteDelay
+	maxRemoteDelay := maxBtcRemoteDelay
+	if primaryChain == litecoinChain {
+		chainCfg = cfg.Litecoin
+		minRemoteDelay = minLtcRemoteDelay
+		maxRemoteDelay = maxLtcRemoteDelay
+	}
+
+	// TODO(roasbeef): add rotation
+	idPrivKey, err := activeChainControl.wallet.DerivePrivKey(keychain.KeyDescriptor{
+		KeyLocator: keychain.KeyLocator{
+			Family: keychain.KeyFamilyNodeKey,
+			Index:  0,
+		},
+	})
 	if err != nil {
 		return err
 	}
 	idPrivKey.Curve = btcec.S256()
 
+	if cfg.Tor.Socks != "" && cfg.Tor.DNS != "" {
+		srvrLog.Infof("Proxying all network traffic via Tor "+
+			"(stream_isolation=%v)! NOTE: If running with a full-node "+
+			"backend, ensure that is proxying over Tor as well",
+			cfg.Tor.StreamIsolation)
+	}
+
 	// Set up the core server which will listen for incoming peer
 	// connections.
-	server, err := newServer(cfg.Listeners, chanDB, activeChainControl,
-		idPrivKey)
+	server, err := newServer(
+		cfg.Listeners, chanDB, activeChainControl, idPrivKey,
+	)
 	if err != nil {
 		srvrLog.Errorf("unable to create server: %v\n", err)
 		return err
@@ -268,10 +316,11 @@ func lndMain() error {
 		return err
 	}
 	fundingMgr, err := newFundingManager(fundingConfig{
-		IDKey:        idPrivKey.PubKey(),
-		Wallet:       activeChainControl.wallet,
-		Notifier:     activeChainControl.chainNotifier,
-		FeeEstimator: activeChainControl.feeEstimator,
+		IDKey:              idPrivKey.PubKey(),
+		Wallet:             activeChainControl.wallet,
+		PublishTransaction: activeChainControl.wallet.PublishTransaction,
+		Notifier:           activeChainControl.chainNotifier,
+		FeeEstimator:       activeChainControl.feeEstimator,
 		SignMessage: func(pubKey *btcec.PublicKey,
 			msg []byte) (*btcec.Signature, error) {
 
@@ -332,7 +381,7 @@ func lndMain() error {
 			// In case the user has explicitly specified
 			// a default value for the number of
 			// confirmations, we use it.
-			defaultConf := uint16(cfg.Bitcoin.DefaultNumChanConfs)
+			defaultConf := uint16(chainCfg.DefaultNumChanConfs)
 			if defaultConf != 0 {
 				return defaultConf
 			}
@@ -365,13 +414,13 @@ func lndMain() error {
 			// In case the user has explicitly specified
 			// a default value for the remote delay, we
 			// use it.
-			defaultDelay := uint16(cfg.Bitcoin.DefaultRemoteDelay)
+			defaultDelay := uint16(chainCfg.DefaultRemoteDelay)
 			if defaultDelay > 0 {
 				return defaultDelay
 			}
 
 			// If not we scale according to channel size.
-			delay := uint16(maxRemoteDelay *
+			delay := uint16(btcutil.Amount(maxRemoteDelay) *
 				chanAmt / maxFundingAmount)
 			if delay < minRemoteDelay {
 				delay = minRemoteDelay
@@ -381,7 +430,20 @@ func lndMain() error {
 			}
 			return delay
 		},
-		WatchNewChannel: server.chainArb.WatchNewChannel,
+		WatchNewChannel: func(channel *channeldb.OpenChannel,
+			addr *lnwire.NetAddress) error {
+
+			// First, we'll mark this new peer as a persistent peer
+			// for re-connection purposes.
+			server.mu.Lock()
+			pubStr := string(addr.IdentityKey.SerializeCompressed())
+			server.persistentPeers[pubStr] = struct{}{}
+			server.mu.Unlock()
+
+			// With that taken care of, we'll send this channel to
+			// the chain arb so it can react to on-chain events.
+			return server.chainArb.WatchNewChannel(channel)
+		},
 		ReportShortChanID: func(chanPoint wire.OutPoint,
 			sid lnwire.ShortChannelID) error {
 
@@ -406,6 +468,8 @@ func lndMain() error {
 			// channel bandwidth.
 			return uint16(lnwallet.MaxHTLCNumber / 2)
 		},
+		ZombieSweeperInterval: 1 * time.Minute,
+		ReservationTimeout:    10 * time.Minute,
 	})
 	if err != nil {
 		return err
@@ -483,7 +547,7 @@ func lndMain() error {
 			"start_height=%v", bestHeight)
 
 		for {
-			synced, err := activeChainControl.wallet.IsSynced()
+			synced, _, err := activeChainControl.wallet.IsSynced()
 			if err != nil {
 				return err
 			}
@@ -641,9 +705,12 @@ func genCertPair(certFile, keyFile string) error {
 	if host != "localhost" {
 		dnsNames = append(dnsNames, "localhost")
 	}
+	if cfg.TLSExtraDomain != "" {
+		dnsNames = append(dnsNames, cfg.TLSExtraDomain)
+	}
 
 	// Generate a private key for the certificate.
-	priv, err := rsa.GenerateKey(rand.Reader, 4096)
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return err
 	}
@@ -665,10 +732,6 @@ func genCertPair(certFile, keyFile string) error {
 
 		DNSNames:    dnsNames,
 		IPAddresses: ipAddresses,
-
-		// This signature algorithm is most likely to be compatible
-		// with clients using less-common TLS libraries like BoringSSL.
-		SignatureAlgorithm: x509.SHA256WithRSA,
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template,
@@ -684,9 +747,12 @@ func genCertPair(certFile, keyFile string) error {
 		return fmt.Errorf("failed to encode certificate: %v", err)
 	}
 
-	keybytes := x509.MarshalPKCS1PrivateKey(priv)
+	keybytes, err := x509.MarshalECPrivateKey(priv)
+	if err != nil {
+		return fmt.Errorf("unable to encode privkey: %v", err)
+	}
 	keyBuf := &bytes.Buffer{}
-	err = pem.Encode(keyBuf, &pem.Block{Type: "RSA PRIVATE KEY",
+	err = pem.Encode(keyBuf, &pem.Block{Type: "EC PRIVATE KEY",
 		Bytes: keybytes})
 	if err != nil {
 		return fmt.Errorf("failed to encode private key: %v", err)
@@ -707,12 +773,33 @@ func genCertPair(certFile, keyFile string) error {
 
 // genMacaroons generates a pair of macaroon files; one admin-level and one
 // read-only. These can also be used to generate more granular macaroons.
-func genMacaroons(ctx context.Context, svc *macaroons.Service, admFile,
-	roFile string) error {
+func genMacaroons(ctx context.Context, svc *macaroons.Service,
+	admFile, roFile, invoiceFile string) error {
+
+	// First, we'll generate a macaroon that only allows the caller to
+	// access invoice related calls. This is useful for merchants and other
+	// services to allow an isolated instance that can only query and
+	// modify invoices.
+	invoiceMac, err := svc.Oven.NewMacaroon(
+		ctx, bakery.LatestVersion, nil, invoicePermissions...,
+	)
+	if err != nil {
+		return err
+	}
+	invoiceMacBytes, err := invoiceMac.M().MarshalBinary()
+	if err != nil {
+		return err
+	}
+	err = ioutil.WriteFile(invoiceFile, invoiceMacBytes, 0644)
+	if err != nil {
+		os.Remove(invoiceFile)
+		return err
+	}
 
 	// Generate the read-only macaroon and write it to a file.
-	roMacaroon, err := svc.Oven.NewMacaroon(ctx, bakery.LatestVersion, nil,
-		readPermissions...)
+	roMacaroon, err := svc.Oven.NewMacaroon(
+		ctx, bakery.LatestVersion, nil, readPermissions...,
+	)
 	if err != nil {
 		return err
 	}
@@ -726,8 +813,10 @@ func genMacaroons(ctx context.Context, svc *macaroons.Service, admFile,
 	}
 
 	// Generate the admin macaroon and write it to a file.
-	admMacaroon, err := svc.Oven.NewMacaroon(ctx, bakery.LatestVersion,
-		nil, append(readPermissions, writePermissions...)...)
+	adminPermissions := append(readPermissions, writePermissions...)
+	admMacaroon, err := svc.Oven.NewMacaroon(
+		ctx, bakery.LatestVersion, nil, adminPermissions...,
+	)
 	if err != nil {
 		return err
 	}
@@ -824,14 +913,56 @@ func waitForWalletPassword(grpcEndpoints, restEndpoints []string,
 		"Use `lncli create` to create wallet, or " +
 		"`lncli unlock` to unlock already created wallet.")
 
-	// We currently don't distinguish between getting a password to
-	// be used for creation or unlocking, as a new wallet db will be
-	// created if none exists when creating the chain control.
+	// We currently don't distinguish between getting a password to be used
+	// for creation or unlocking, as a new wallet db will be created if
+	// none exists when creating the chain control.
 	select {
-	case walletPw := <-pwService.CreatePasswords:
-		return walletPw, walletPw, nil
+
+	// The wallet is being created for the first time, we'll check to see
+	// if the user provided any entropy for seed creation. If so, then
+	// we'll create the wallet early to load the seed.
+	case initMsg := <-pwService.InitMsgs:
+		password := initMsg.Passphrase
+		cipherSeed := initMsg.WalletSeed
+
+		// Before we proceed, we'll check the internal version of the
+		// seed. If it's greater than the current key derivation
+		// version, then we'll return an error as we don't understand
+		// this.
+		if cipherSeed.InternalVersion != keychain.KeyDerivationVersion {
+			return nil, nil, fmt.Errorf("invalid internal seed "+
+				"version %v, current version is %v",
+				cipherSeed.InternalVersion,
+				keychain.KeyDerivationVersion)
+		}
+
+		netDir := btcwallet.NetworkDir(
+			chainConfig.ChainDir, activeNetParams.Params,
+		)
+		loader := wallet.NewLoader(activeNetParams.Params, netDir)
+
+		// With the seed, we can now use the wallet loader to create
+		// the wallet, then unload it so it can be opened shortly
+		// after.
+		// TODO(roasbeef): extend loader to also accept birthday
+		_, err = loader.CreateNewWallet(
+			password, password, cipherSeed.Entropy[:],
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if err := loader.UnloadWallet(); err != nil {
+			return nil, nil, err
+		}
+
+		return password, password, nil
+
+	// The wallet has already been created in the past, and is simply being
+	// unlocked. So we'll just return these passphrases.
 	case walletPw := <-pwService.UnlockPasswords:
 		return walletPw, walletPw, nil
+
 	case <-shutdownChannel:
 		return nil, nil, fmt.Errorf("shutting down")
 	}

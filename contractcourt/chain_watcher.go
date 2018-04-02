@@ -133,13 +133,13 @@ func newChainWatcher(chanState *channeldb.OpenChannel,
 	var stateHint [lnwallet.StateHintSize]byte
 	if chanState.IsInitiator {
 		stateHint = lnwallet.DeriveStateHintObfuscator(
-			chanState.LocalChanCfg.PaymentBasePoint,
-			chanState.RemoteChanCfg.PaymentBasePoint,
+			chanState.LocalChanCfg.PaymentBasePoint.PubKey,
+			chanState.RemoteChanCfg.PaymentBasePoint.PubKey,
 		)
 	} else {
 		stateHint = lnwallet.DeriveStateHintObfuscator(
-			chanState.RemoteChanCfg.PaymentBasePoint,
-			chanState.LocalChanCfg.PaymentBasePoint,
+			chanState.RemoteChanCfg.PaymentBasePoint.PubKey,
+			chanState.LocalChanCfg.PaymentBasePoint.PubKey,
 		)
 	}
 
@@ -578,8 +578,20 @@ func (c *chainWatcher) dispatchContractBreach(spendEvent *chainntnfs.SpendDetail
 		return fmt.Errorf("unable to create breach retribution: %v", err)
 	}
 
+	// Nil the curve before printing.
+	if retribution.RemoteOutputSignDesc != nil &&
+		retribution.RemoteOutputSignDesc.DoubleTweak != nil {
+		retribution.RemoteOutputSignDesc.DoubleTweak.Curve = nil
+	}
+	if retribution.LocalOutputSignDesc != nil &&
+		retribution.LocalOutputSignDesc.DoubleTweak != nil {
+		retribution.LocalOutputSignDesc.DoubleTweak.Curve = nil
+	}
+
 	log.Debugf("Punishment breach retribution created: %v",
-		spew.Sdump(retribution))
+		newLogClosure(func() string {
+			return spew.Sdump(retribution)
+		}))
 
 	// With the event processed, we'll now notify all subscribers of the
 	// event.
