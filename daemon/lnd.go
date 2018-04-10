@@ -90,7 +90,7 @@ var (
 // lndMain is the true entry point for lnd. This function is required since
 // defers created in the top-level scope of a main method aren't executed if
 // os.Exit() is called.
-func LndMain(appDir string) error {
+func LndMain(appDir string, lis net.Listener) error {
 	defer func() {
 		if logRotatorPipe != nil {
 			ltndLog.Info("Shutdown complete")
@@ -336,49 +336,60 @@ func LndMain(appDir string) error {
 	}
 	defer rpcServer.Stop()
 
+	serverOpts = []grpc.ServerOption{}
 	grpcServer := grpc.NewServer(serverOpts...)
 	lnrpc.RegisterLightningServer(grpcServer, rpcServer)
 
-	// Next, Start the gRPC server listening for HTTP/2 connections.
-	for _, listener := range cfg.RPCListeners {
-		lis, err := lncfg.ListenOnAddress(listener)
-		if err != nil {
-			ltndLog.Errorf(
-				"RPC server unable to listen on %s", listener,
-			)
-			return err
-		}
+	// If a listener was provided to main(), we listen on it. If not, we go
+	// on listening on the regular listeners.
+	if lis != nil {
 		defer lis.Close()
 		go func() {
 			rpcsLog.Infof("RPC server listening on %s", lis.Addr())
 			grpcServer.Serve(lis)
 		}()
-	}
+	} else {
+  	// Next, Start the gRPC server listening for HTTP/2 connections.
+	  for _, listener := range cfg.RPCListeners {
+		  lis, err := lncfg.ListenOnAddress(listener)
+		  if err != nil {
+			  ltndLog.Errorf(
+				  "RPC server unable to listen on %s", listener,
+			  )
+			  return err
+  		}
+	  	defer lis.Close()
+	  	go func() {
+	  		rpcsLog.Infof("RPC server listening on %s", lis.Addr())
+	  		grpcServer.Serve(lis)
+	  	}()
+	  }
 
-	// Finally, start the REST proxy for our gRPC server above.
-	mux := proxy.NewServeMux()
-	err = lnrpc.RegisterLightningHandlerFromEndpoint(
-		ctx, mux, cfg.RPCListeners[0].String(), proxyOpts,
-	)
-	if err != nil {
-		return err
-	}
-	for _, restEndpoint := range cfg.RESTListeners {
-		lis, err := lncfg.TLSListenOnAddress(restEndpoint, tlsConf)
-		if err != nil {
-			ltndLog.Errorf(
-				"gRPC proxy unable to listen on %s",
-				restEndpoint,
-			)
-			return err
-		}
-		defer lis.Close()
-		go func() {
-			rpcsLog.Infof("gRPC proxy started at %s", lis.Addr())
-			http.Serve(lis, mux)
-		}()
-	}
-
+	  // Finally, start the REST proxy for our gRPC server above.
+	  mux := proxy.NewServeMux()
+	  err = lnrpc.RegisterLightningHandlerFromEndpoint(
+	  	ctx, mux, cfg.RPCListeners[0].String(), proxyOpts,
+	  )
+  	if err != nil {
+	  	return err
+	  }
+	  for _, restEndpoint := range cfg.RESTListeners {
+	  	lis, err := lncfg.TlsListenOnAddress(restEndpoint, tlsConf)
+	  	if err != nil {
+	  		ltndLog.Errorf(
+	  			"gRPC proxy unable to listen on %s",
+	  			restEndpoint,
+	  		)
+	  		return err
+	  	}
+	  	defer lis.Close()
+	  	go func() {
+	  		rpcsLog.Infof("gRPC proxy started at %s", lis.Addr())
+	  		http.Serve(lis, mux)
+	  	}()
+	  }
+  }
+  
 	// If we're not in simnet mode, We'll wait until we're fully synced to
 	// continue the start up of the remainder of the daemon. This ensures
 	// that we don't accept any possibly invalid state transitions, or
