@@ -443,18 +443,6 @@ func lndMain() error {
 	return nil
 }
 
-func main() {
-	// Call the "real" main in a nested manner so the defers will properly
-	// be executed in the case of a graceful shutdown.
-	if err := lndMain(); err != nil {
-		if e, ok := err.(*flags.Error); ok && e.Type == flags.ErrHelp {
-		} else {
-			fmt.Fprintln(os.Stderr, err)
-		}
-		os.Exit(1)
-	}
-}
-
 // fileExists reports whether the named file or directory exists.
 // This function is taken from https://github.com/btcsuite/btcd
 func fileExists(name string) bool {
