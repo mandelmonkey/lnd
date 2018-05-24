@@ -20,11 +20,11 @@
 
 [[constraint]]
   name = "github.com/golang/protobuf"
-  revision = "bbd03ef6da3a115852eaf24c8a1c46aeb39aa175"
+  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
 
 [[constraint]]
   name = "github.com/grpc-ecosystem/grpc-gateway"
-  revision = "f2862b476edcef83412c7af8687c9cd8e4097c0f"
+  revision = "92583770e3f01b09a0d3e9bdf64321d8bebd48f2"
 
 [[constraint]]
   name = "github.com/jackpal/go-nat-pmp"
