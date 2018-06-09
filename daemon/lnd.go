@@ -336,13 +336,13 @@ func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener)
 	}
 	defer rpcServer.Stop()
 
-	serverOpts = []grpc.ServerOption{}
-	grpcServer := grpc.NewServer(serverOpts...)
-	lnrpc.RegisterLightningServer(grpcServer, rpcServer)
-
 	// If a listener was provided to main(), we listen on it. If not, we go
 	// on listening on the regular listeners.
 	if lightningLis != nil {
+		serverOpts = []grpc.ServerOption{} // This is added here to remove macaroon?
+		grpcServer := grpc.NewServer(serverOpts...)
+		lnrpc.RegisterLightningServer(grpcServer, rpcServer)
+
 		defer lightningLis.Close()
 		go func() {
 			rpcsLog.Infof("RPC server listening on %s", lightningLis.Addr())
@@ -703,7 +703,6 @@ func waitForWalletPassword(grpcEndpoints, restEndpoints []net.Addr,
 
 	// Set up a new PasswordService, which will listen for passwords
 	// provided over RPC.
-	grpcServer := grpc.NewServer(serverOpts...)
 
 	chainConfig := cfg.Bitcoin
 	if registeredChains.PrimaryChain() == litecoinChain {
@@ -721,7 +720,6 @@ func waitForWalletPassword(grpcEndpoints, restEndpoints []net.Addr,
 	pwService := walletunlocker.New(
 		chainConfig.ChainDir, activeNetParams.Params, macaroonFiles,
 	)
-	lnrpc.RegisterWalletUnlockerServer(grpcServer, pwService)
 
 	// Use a WaitGroup so we can be sure the instructions on how to input the
 	// password is the last thing to be printed to the console.
@@ -730,6 +728,10 @@ func waitForWalletPassword(grpcEndpoints, restEndpoints []net.Addr,
 	// If a listener was provided to main(), we listen on it. If not, we go
 	// on listening on the regular listeners.
 	if unlockerLis != nil {
+		serverOpts = []grpc.ServerOption{} // This is added here to remove TLS?
+		grpcServer := grpc.NewServer(serverOpts...)
+		lnrpc.RegisterWalletUnlockerServer(grpcServer, pwService)
+
 		defer unlockerLis.Close()
 
 		wg.Add(1)
@@ -739,6 +741,9 @@ func waitForWalletPassword(grpcEndpoints, restEndpoints []net.Addr,
 			grpcServer.Serve(unlockerLis)
 		}()
 	} else {
+		grpcServer := grpc.NewServer(serverOpts...)
+		lnrpc.RegisterWalletUnlockerServer(grpcServer, pwService)
+
 		for _, grpcEndpoint := range grpcEndpoints {
   		// Start a gRPC server listening for HTTP/2 connections, solely
   		// used for getting the encryption password from the client.
