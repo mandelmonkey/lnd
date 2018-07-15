@@ -336,60 +336,58 @@ func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener)
 	}
 	defer rpcServer.Stop()
 
-	// If a listener was provided to main(), we listen on it. If not, we go
-	// on listening on the regular listeners.
-	if lightningLis != nil {
-		serverOpts = []grpc.ServerOption{} // This is added here to remove macaroon?
-		grpcServer := grpc.NewServer(serverOpts...)
-		lnrpc.RegisterLightningServer(grpcServer, rpcServer)
+	serverOpts = []grpc.ServerOption{} // This is added here to remove macaroon?
+	grpcServer := grpc.NewServer(serverOpts...)
+	lnrpc.RegisterLightningServer(grpcServer, rpcServer)
 
+	if lightningLis != nil {
 		defer lightningLis.Close()
 		go func() {
 			rpcsLog.Infof("RPC server listening on %s", lightningLis.Addr())
 			grpcServer.Serve(lightningLis)
 		}()
 	} else {
-  	// Next, Start the gRPC server listening for HTTP/2 connections.
-	  for _, listener := range cfg.RPCListeners {
-		  lis, err := lncfg.ListenOnAddress(listener)
-		  if err != nil {
-			  ltndLog.Errorf(
-				  "RPC server unable to listen on %s", listener,
-			  )
-			  return err
-  		}
-	  	defer lis.Close()
-	  	go func() {
-	  		rpcsLog.Infof("RPC server listening on %s", lis.Addr())
-	  		grpcServer.Serve(lis)
-	  	}()
-	  }
+		// Next, Start the gRPC server listening for HTTP/2 connections.
+		for _, listener := range cfg.RPCListeners {
+			lis, err := lncfg.ListenOnAddress(listener)
+			if err != nil {
+				ltndLog.Errorf(
+					"RPC server unable to listen on %s", listener,
+				)
+				return err
+			}
+			defer lis.Close()
+			go func() {
+				rpcsLog.Infof("RPC server listening on %s", lis.Addr())
+				grpcServer.Serve(lis)
+			}()
+		}
 
-	  // Finally, start the REST proxy for our gRPC server above.
-	  mux := proxy.NewServeMux()
-	  err = lnrpc.RegisterLightningHandlerFromEndpoint(
-	  	ctx, mux, cfg.RPCListeners[0].String(), proxyOpts,
-	  )
-  	if err != nil {
-	  	return err
-	  }
-	  for _, restEndpoint := range cfg.RESTListeners {
-	  	lis, err := lncfg.TlsListenOnAddress(restEndpoint, tlsConf)
-	  	if err != nil {
-	  		ltndLog.Errorf(
-	  			"gRPC proxy unable to listen on %s",
-	  			restEndpoint,
-	  		)
-	  		return err
-	  	}
-	  	defer lis.Close()
-	  	go func() {
-	  		rpcsLog.Infof("gRPC proxy started at %s", lis.Addr())
-	  		http.Serve(lis, mux)
-	  	}()
-	  }
-  }
-  
+		// Finally, start the REST proxy for our gRPC server above.
+		mux := proxy.NewServeMux()
+		err = lnrpc.RegisterLightningHandlerFromEndpoint(
+			ctx, mux, cfg.RPCListeners[0].String(), proxyOpts,
+		)
+		if err != nil {
+			return err
+		}
+		for _, restEndpoint := range cfg.RESTListeners {
+			lis, err := lncfg.TlsListenOnAddress(restEndpoint, tlsConf)
+			if err != nil {
+				ltndLog.Errorf(
+					"gRPC proxy unable to listen on %s",
+					restEndpoint,
+				)
+				return err
+			}
+			defer lis.Close()
+			go func() {
+				rpcsLog.Infof("gRPC proxy started at %s", lis.Addr())
+				http.Serve(lis, mux)
+			}()
+		}
+	}
+
 	// If we're not in simnet mode, We'll wait until we're fully synced to
 	// continue the start up of the remainder of the daemon. This ensures
 	// that we don't accept any possibly invalid state transitions, or
@@ -745,66 +743,66 @@ func waitForWalletPassword(grpcEndpoints, restEndpoints []net.Addr,
 		lnrpc.RegisterWalletUnlockerServer(grpcServer, pwService)
 
 		for _, grpcEndpoint := range grpcEndpoints {
-  		// Start a gRPC server listening for HTTP/2 connections, solely
-  		// used for getting the encryption password from the client.
-  		lis, err := lncfg.ListenOnAddress(grpcEndpoint)
-  		if err != nil {
-  			ltndLog.Errorf(
-  				"password RPC server unable to listen on %s",
-  				grpcEndpoint,
-  			)
-  			return nil, err
-  		}
-  		defer lis.Close()
+			// Start a gRPC server listening for HTTP/2 connections, solely
+			// used for getting the encryption password from the client.
+			lis, err := lncfg.ListenOnAddress(grpcEndpoint)
+			if err != nil {
+				ltndLog.Errorf(
+					"password RPC server unable to listen on %s",
+					grpcEndpoint,
+				)
+				return nil, err
+			}
+			defer lis.Close()
 
-  		wg.Add(1)
-  		go func() {
-  			rpcsLog.Infof(
-	  			"password RPC server listening on %s",
-	  			lis.Addr(),
-	  		)
-  			wg.Done()
-  			grpcServer.Serve(lis)
-  		}()
-  	}
+			wg.Add(1)
+			go func() {
+				rpcsLog.Infof(
+					"password RPC server listening on %s",
+					lis.Addr(),
+				)
+				wg.Done()
+				grpcServer.Serve(lis)
+			}()
+		}
 
-  	// Start a REST proxy for our gRPC server above.
-  	ctx := context.Background()
-  	ctx, cancel := context.WithCancel(ctx)
-  	defer cancel()
+		// Start a REST proxy for our gRPC server above.
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
 
-  	mux := proxy.NewServeMux()
+		mux := proxy.NewServeMux()
 
-  	err := lnrpc.RegisterWalletUnlockerHandlerFromEndpoint(
-  		ctx, mux, grpcEndpoints[0].String(), proxyOpts,
-  	)
-  	if err != nil {
-  		return nil, err
-  	}
+		err := lnrpc.RegisterWalletUnlockerHandlerFromEndpoint(
+			ctx, mux, grpcEndpoints[0].String(), proxyOpts,
+		)
+		if err != nil {
+			return nil, err
+		}
 
-  	srv := &http.Server{Handler: mux}
+		srv := &http.Server{Handler: mux}
 
-  	for _, restEndpoint := range restEndpoints {
-  		lis, err := lncfg.TlsListenOnAddress(restEndpoint, tlsConf)
-  		if err != nil {
-  			ltndLog.Errorf(
-  				"password gRPC proxy unable to listen on %s",
-  				restEndpoint,
-  			)
-  			return nil, err
-  		}
-  		defer lis.Close()
+		for _, restEndpoint := range restEndpoints {
+			lis, err := lncfg.TlsListenOnAddress(restEndpoint, tlsConf)
+			if err != nil {
+				ltndLog.Errorf(
+					"password gRPC proxy unable to listen on %s",
+					restEndpoint,
+				)
+				return nil, err
+			}
+			defer lis.Close()
 
-  		wg.Add(1)
-  		go func() {
-  			rpcsLog.Infof(
-  				"password gRPC proxy started at %s",
-  				lis.Addr(),
-  			)
-  			wg.Done()
-  			srv.Serve(lis)
-  		}()
-  	}
+			wg.Add(1)
+			go func() {
+				rpcsLog.Infof(
+					"password gRPC proxy started at %s",
+					lis.Addr(),
+				)
+				wg.Done()
+				srv.Serve(lis)
+			}()
+		}
 	}
 
 	// Wait for gRPC and REST servers to be up running.
@@ -850,7 +848,7 @@ func waitForWalletPassword(grpcEndpoints, restEndpoints []net.Addr,
 		// With the seed, we can now use the wallet loader to create
 		// the wallet, then pass it back to avoid unlocking it again.
 		birthday := cipherSeed.BirthdayTime()
-		_, err = loader.CreateNewWallet(
+		newWallet, err := loader.CreateNewWallet(
 			password, password, cipherSeed.Entropy[:], birthday,
 		)
 		if err != nil {

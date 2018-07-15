@@ -152,6 +152,7 @@
     "nacl/secretbox",
     "pbkdf2",
     "poly1305",
+    "ripemd160",
     "salsa20/salsa",
     "scrypt",
     "ssh/terminal",
