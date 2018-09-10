@@ -335,8 +335,10 @@ func loadConfig(appDir string) (*config, error) {
 	// file within it.
 	configFileDir := cleanAndExpandPath(preCfg.LndDir)
 	configFilePath := cleanAndExpandPath(preCfg.ConfigFile)
+	if appDir != "" {
+		configFileDir = cleanAndExpandPath(appDir)
+	}
 	if configFileDir != defaultLndDir {
-	if lndDir != defaultLndDir {
 		if configFilePath == defaultConfigFile {
 			configFilePath = filepath.Join(
 				configFileDir, defaultConfigFilename,
@@ -370,7 +372,6 @@ func loadConfig(appDir string) (*config, error) {
 	if appDir != "" {
 		lndDir = cleanAndExpandPath(appDir)
 	}
-
 	if lndDir != defaultLndDir {
 		cfg.DataDir = filepath.Join(lndDir, defaultDataDirname)
 		cfg.TLSCertPath = filepath.Join(lndDir, defaultTLSCertFilename)
