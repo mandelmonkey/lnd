@@ -36,7 +36,6 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcwallet/wallet"
 	proxy "github.com/grpc-ecosystem/grpc-gateway/runtime"
-	flags "github.com/jessevdk/go-flags"
 
 	"github.com/lightningnetwork/lnd/build"
 	"github.com/lightningnetwork/lnd/channeldb"
@@ -91,12 +90,6 @@ var (
 // defers created in the top-level scope of a main method aren't executed if
 // os.Exit() is called.
 func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener) error {
-	defer func() {
-		if logRotatorPipe != nil {
-			ltndLog.Info("Shutdown complete")
-		}
-	}()
-
 	// Load the configuration, and parse any command line options. This
 	// function will also set up logging properly.
 	loadedConfig, err := loadConfig(appDir)
@@ -563,7 +556,7 @@ func genCertPair(certFile, keyFile string) error {
 
 		KeyUsage: x509.KeyUsageKeyEncipherment |
 			x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		IsCA:                  true, // so can sign self.
+		IsCA: true, // so can sign self.
 		BasicConstraintsValid: true,
 
 		DNSNames:    dnsNames,
