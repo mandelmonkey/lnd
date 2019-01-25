@@ -1,6 +1,6 @@
 package channeldb
 
-import "github.com/coreos/bbolt"
+import bolt "github.com/coreos/bbolt"
 
 var (
 	// metaBucket stores all the meta information concerning the state of
@@ -20,10 +20,10 @@ type Meta struct {
 
 // FetchMeta fetches the meta data from boltdb and returns filled meta
 // structure.
-func (d *DB) FetchMeta(tx *bbolt.Tx) (*Meta, error) {
+func (d *DB) FetchMeta(tx *bolt.Tx) (*Meta, error) {
 	meta := &Meta{}
 
-	err := d.View(func(tx *bbolt.Tx) error {
+	err := d.View(func(tx *bolt.Tx) error {
 		return fetchMeta(meta, tx)
 	})
 	if err != nil {
@@ -36,7 +36,7 @@ func (d *DB) FetchMeta(tx *bbolt.Tx) (*Meta, error) {
 // fetchMeta is an internal helper function used in order to allow callers to
 // re-use a database transaction. See the publicly exported FetchMeta method
 // for more information.
-func fetchMeta(meta *Meta, tx *bbolt.Tx) error {
+func fetchMeta(meta *Meta, tx *bolt.Tx) error {
 	metaBucket := tx.Bucket(metaBucket)
 	if metaBucket == nil {
 		return ErrMetaNotFound
@@ -54,7 +54,7 @@ func fetchMeta(meta *Meta, tx *bbolt.Tx) error {
 
 // PutMeta writes the passed instance of the database met-data struct to disk.
 func (d *DB) PutMeta(meta *Meta) error {
-	return d.Update(func(tx *bbolt.Tx) error {
+	return d.Update(func(tx *bolt.Tx) error {
 		return putMeta(meta, tx)
 	})
 }
@@ -62,7 +62,7 @@ func (d *DB) PutMeta(meta *Meta) error {
 // putMeta is an internal helper function used in order to allow callers to
 // re-use a database transaction. See the publicly exported PutMeta method for
 // more information.
-func putMeta(meta *Meta, tx *bbolt.Tx) error {
+func putMeta(meta *Meta, tx *bolt.Tx) error {
 	metaBucket, err := tx.CreateBucketIfNotExists(metaBucket)
 	if err != nil {
 		return err
@@ -71,7 +71,7 @@ func putMeta(meta *Meta, tx *bbolt.Tx) error {
 	return putDbVersion(metaBucket, meta)
 }
 
-func putDbVersion(metaBucket *bbolt.Bucket, meta *Meta) error {
+func putDbVersion(metaBucket *bolt.Bucket, meta *Meta) error {
 	scratch := make([]byte, 4)
 	byteOrder.PutUint32(scratch, meta.DbVersionNumber)
 	return metaBucket.Put(dbVersionKey, scratch)
