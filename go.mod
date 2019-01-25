@@ -34,6 +34,8 @@ require (
 	github.com/lightningnetwork/lightning-onion v0.0.0-20180605012408-ac4d9da8f1d6
 	github.com/ltcsuite/ltcd v0.0.0-20190101042124-f37f8bf35796
 	github.com/miekg/dns v0.0.0-20171125082028-79bfde677fa8
+	github.com/roasbeef/btcd v0.0.0-20180418012700-a03db407e40d // indirect
+	github.com/roasbeef/btcutil v0.0.0-20180406014609-dfb640c57141
 	github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af // indirect
 	github.com/tv42/zbase32 v0.0.0-20160707012821-501572607d02
 	github.com/urfave/cli v1.18.0
