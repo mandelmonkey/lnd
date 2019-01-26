@@ -36,7 +36,6 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcwallet/wallet"
 	proxy "github.com/grpc-ecosystem/grpc-gateway/runtime"
-	flags "github.com/jessevdk/go-flags"
 
 	"github.com/lightningnetwork/lnd/autopilot"
 	"github.com/lightningnetwork/lnd/build"
@@ -91,10 +90,14 @@ var (
 // lndMain is the true entry point for lnd. This function is required since
 // defers created in the top-level scope of a main method aren't executed if
 // os.Exit() is called.
-func lndMain() error {
+
+// lndMain is the true entry point for lnd. This function is required since
+// defers created in the top-level scope of a main method aren't executed if
+// os.Exit() is called.
+func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener) error {
 	// Load the configuration, and parse any command line options. This
 	// function will also set up logging properly.
-	loadedConfig, err := loadConfig()
+	loadedConfig, err := loadConfig(appDir)
 	if err != nil {
 		return err
 	}
@@ -208,10 +211,12 @@ func lndMain() error {
 	// started with the --noseedbackup flag, we use the default password
 	// for wallet encryption.
 	if !cfg.NoSeedBackup {
+
 		walletInitParams, err := waitForWalletPassword(
 			cfg.RPCListeners, cfg.RESTListeners, serverOpts,
 			proxyOpts, tlsConf,
 		)
+
 		if err != nil {
 			return err
 		}
@@ -313,9 +318,16 @@ func lndMain() error {
 		return err
 	}
 
-	// Set up an autopilot manager from the current config. This will be
-	// used to manage the underlying autopilot agent, starting and stopping
-	// it at will.
+	// Check macaroon authentication if macaroons aren't disabled.
+	if macaroonService != nil {
+		serverOpts = append(serverOpts,
+			grpc.UnaryInterceptor(macaroonService.
+				UnaryServerInterceptor(permissions)),
+			grpc.StreamInterceptor(macaroonService.
+				StreamServerInterceptor(permissions)),
+		)
+	}
+
 	atplCfg, err := initAutoPilot(server, cfg.Autopilot)
 	if err != nil {
 		ltndLog.Errorf("unable to init autopilot: %v", err)
@@ -339,14 +351,62 @@ func lndMain() error {
 		server, macaroonService, cfg.SubRPCServers, serverOpts,
 		proxyOpts, atplManager, server.invoices, tlsConf,
 	)
-	if err != nil {
-		srvrLog.Errorf("unable to start RPC server: %v", err)
-		return err
-	}
 	if err := rpcServer.Start(); err != nil {
 		return err
 	}
 	defer rpcServer.Stop()
+
+	serverOpts = []grpc.ServerOption{} // This is added here to remove macaroon?
+	grpcServer := grpc.NewServer(serverOpts...)
+	lnrpc.RegisterLightningServer(grpcServer, rpcServer)
+
+	if lightningLis != nil {
+		defer lightningLis.Close()
+		go func() {
+			rpcsLog.Infof("RPC server listening on %s", lightningLis.Addr())
+			grpcServer.Serve(lightningLis)
+		}()
+	} else {
+		// Next, Start the gRPC server listening for HTTP/2 connections.
+		for _, listener := range cfg.RPCListeners {
+			lis, err := lncfg.ListenOnAddress(listener)
+			if err != nil {
+				ltndLog.Errorf(
+					"RPC server unable to listen on %s", listener,
+				)
+				return err
+			}
+			defer lis.Close()
+			go func() {
+				rpcsLog.Infof("RPC server listening on %s", lis.Addr())
+				grpcServer.Serve(lis)
+			}()
+		}
+
+		// Finally, start the REST proxy for our gRPC server above.
+		mux := proxy.NewServeMux()
+		err = lnrpc.RegisterLightningHandlerFromEndpoint(
+			ctx, mux, cfg.RPCListeners[0].String(), proxyOpts,
+		)
+		if err != nil {
+			return err
+		}
+		for _, restEndpoint := range cfg.RESTListeners {
+			lis, err := lncfg.TLSListenOnAddress(restEndpoint, tlsConf)
+			if err != nil {
+				ltndLog.Errorf(
+					"gRPC proxy unable to listen on %s",
+					restEndpoint,
+				)
+				return err
+			}
+			defer lis.Close()
+			go func() {
+				rpcsLog.Infof("gRPC proxy started at %s", lis.Addr())
+				http.Serve(lis, mux)
+			}()
+		}
+	}
 
 	// If we're not in simnet mode, We'll wait until we're fully synced to
 	// continue the start up of the remainder of the daemon. This ensures
@@ -396,8 +456,7 @@ func lndMain() error {
 	defer server.Stop()
 
 	// Now that the server has started, if the autopilot mode is currently
-	// active, then we'll start the autopilot agent immediately. It will be
-	// stopped together with the autopilot service.
+	// active, then we'll initialize a fresh instance of it and start it.
 	if cfg.Autopilot.Active {
 		if err := atplManager.StartAgent(); err != nil {
 			ltndLog.Errorf("unable to start autopilot agent: %v",
@@ -410,18 +469,6 @@ func lndMain() error {
 	// the interrupt handler.
 	<-signal.ShutdownChannel()
 	return nil
-}
-
-func main() {
-	// Call the "real" main in a nested manner so the defers will properly
-	// be executed in the case of a graceful shutdown.
-	if err := lndMain(); err != nil {
-		if e, ok := err.(*flags.Error); ok && e.Type == flags.ErrHelp {
-		} else {
-			fmt.Fprintln(os.Stderr, err)
-		}
-		os.Exit(1)
-	}
 }
 
 // fileExists reports whether the named file or directory exists.

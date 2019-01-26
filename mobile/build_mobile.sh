@@ -6,7 +6,7 @@ echo "current dir is $dir"
 cd $dir
 
 arg=${1:-}
-
+ 
 package="github.com/lightningnetwork/lnd/mobile"
 
 mobile_dir="$dir"

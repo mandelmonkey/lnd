@@ -262,7 +262,7 @@ type config struct {
 // 	2) Pre-parse the command line to check for an alternative config file
 // 	3) Load configuration file overwriting defaults with any specified options
 // 	4) Parse CLI options and overwrite/add any specified options
-func loadConfig() (*config, error) {
+func loadConfig(appDir string) (*config, error) {
 	defaultCfg := config{
 		LndDir:         defaultLndDir,
 		ConfigFile:     defaultConfigFile,
@@ -358,6 +358,9 @@ func loadConfig() (*config, error) {
 	// file within it.
 	configFileDir := cleanAndExpandPath(preCfg.LndDir)
 	configFilePath := cleanAndExpandPath(preCfg.ConfigFile)
+	if appDir != "" {
+		configFileDir = cleanAndExpandPath(appDir)
+	}
 	if configFileDir != defaultLndDir {
 		if configFilePath == defaultConfigFile {
 			configFilePath = filepath.Join(
@@ -389,6 +392,9 @@ func loadConfig() (*config, error) {
 	// If the provided lnd directory is not the default, we'll modify the
 	// path to all of the files and directories that will live within it.
 	lndDir := cleanAndExpandPath(cfg.LndDir)
+	if appDir != "" {
+		lndDir = cleanAndExpandPath(appDir)
+	}
 	if lndDir != defaultLndDir {
 		cfg.DataDir = filepath.Join(lndDir, defaultDataDirname)
 		cfg.TLSCertPath = filepath.Join(lndDir, defaultTLSCertFilename)
