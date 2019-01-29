@@ -58,3 +58,5 @@ profile.tmp
 .DS_Store
 
 .vscode
+
+mobile/build
