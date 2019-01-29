@@ -15,9 +15,10 @@ require (
 	github.com/btcsuite/goleveldb v1.0.0 // indirect
 	github.com/coreos/bbolt v0.0.0-20180223184059-7ee3ded59d4835e10f3e7d0f7603c42aa5e83820
 	github.com/davecgh/go-spew v1.1.1
+	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-errors/errors v1.0.1
 	github.com/golang/protobuf v1.2.0
-	github.com/grpc-ecosystem/grpc-gateway v0.0.0-20170724004829-f2862b476edc
+	github.com/grpc-ecosystem/grpc-gateway v1.7.0
 	github.com/jackpal/gateway v1.0.4
 	github.com/jackpal/go-nat-pmp v0.0.0-20170405195558-28a68d0c24ad
 	github.com/jessevdk/go-flags v0.0.0-20170926144705-f88afde2fa19

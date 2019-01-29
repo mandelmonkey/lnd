@@ -1871,7 +1871,7 @@ func (r *rpcServer) GetInfo(ctx context.Context,
 		Uris:                uris,
 		Alias:               nodeAnn.Alias.String(),
 		BestHeaderTimestamp: int64(bestHeaderTimestamp),
-		Version:             build.Version(),
+		Version:             "yeah", //build.Version(),
 	}, nil
 }
 
