@@ -54,7 +54,7 @@ const (
 	defaultMaxLogFiles         = 3
 	defaultMaxLogFileSize      = 10
 	defaultMinBackoff          = time.Second
-	defaultMaxBackoff          = time.Hour
+	defaultMaxBackoff          = time.Minute //should be time.Hour
 
 	defaultTorSOCKSPort            = 9050
 	defaultTorDNSHost              = "soa.nodes.lightning.directory"
