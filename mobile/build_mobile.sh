@@ -16,13 +16,13 @@ mkdir -p $build_dir
 # Generate API bindings.
 api_filename="api_generated.go"
 echo "Generating mobile bindings ($api_filename)."
-go generate
+#go generate
 echo "Done."
 
 ios_dir="$build_dir/ios"
 mkdir -p $ios_dir
 ios_dest="$ios_dir/Lndmobile.framework"
-echo "Building for iOS ($ios_dest)..."
+echo "Building for iOS now ($ios_dest)..."
 "$GOPATH/bin/gomobile" bind -target=ios -tags="ios" -v -o "$ios_dest" "$package"
 
 android_dir="$build_dir/android"

@@ -198,6 +198,7 @@ func newChainControlFromConfig(cfg *config, chanDB *channeldb.DB,
 	// of the selected chain.
 	switch homeChainConfig.Node {
 	case "neutrino":
+		ltndLog.Infof("starting neutrino")
 		// First we'll open the database file for neutrino, creating
 		// the database if needed. We append the normalized network name
 		// here to match the behavior of btcwallet.
