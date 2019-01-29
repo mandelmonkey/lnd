@@ -16,7 +16,7 @@ mkdir -p $build_dir
 # Generate API bindings.
 api_filename="api_generated.go"
 echo "Generating mobile bindings ($api_filename)."
-go generate
+#go generate
 echo "Done."
 
 ios_dir="$build_dir/ios"

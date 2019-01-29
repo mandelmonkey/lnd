@@ -56,14 +56,13 @@ const (
 	defaultMaxLogFiles              = 3
 	defaultMaxLogFileSize           = 10
 	defaultMinBackoff               = time.Second
-	defaultMaxBackoff               = time.Hour
-
-	defaultTorSOCKSPort            = 9050
-	defaultTorDNSHost              = "soa.nodes.lightning.directory"
-	defaultTorDNSPort              = 53
-	defaultTorControlPort          = 9051
-	defaultTorV2PrivateKeyFilename = "v2_onion_private_key"
-	defaultTorV3PrivateKeyFilename = "v3_onion_private_key"
+	defaultMaxBackoff               = time.Second //should be hour
+	defaultTorSOCKSPort             = 9050
+	defaultTorDNSHost               = "soa.nodes.lightning.directory"
+	defaultTorDNSPort               = 53
+	defaultTorControlPort           = 9051
+	defaultTorV2PrivateKeyFilename  = "v2_onion_private_key"
+	defaultTorV3PrivateKeyFilename  = "v3_onion_private_key"
 
 	defaultBroadcastDelta = 10
 
