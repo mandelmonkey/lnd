@@ -9,7 +9,6 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/coreos/bbolt"
-	bolt "github.com/coreos/bbolt"
 )
 
 var (
@@ -102,7 +101,7 @@ func (l *LinkNode) Sync() error {
 
 	// Finally update the database by storing the link node and updating
 	// any relevant indexes.
-	return l.db.Update(func(tx *bolt.Tx) error {
+	return l.db.Update(func(tx *bbolt.Tx) error {
 		nodeMetaBucket := tx.Bucket(nodeInfoBucket)
 		if nodeMetaBucket == nil {
 			return ErrLinkNodesNotFound
@@ -115,7 +114,7 @@ func (l *LinkNode) Sync() error {
 // putLinkNode serializes then writes the encoded version of the passed link
 // node into the nodeMetaBucket. This function is provided in order to allow
 // the ability to re-use a database transaction across many operations.
-func putLinkNode(nodeMetaBucket *bolt.Bucket, l *LinkNode) error {
+func putLinkNode(nodeMetaBucket *bbolt.Bucket, l *LinkNode) error {
 	// First serialize the LinkNode into its raw-bytes encoding.
 	var b bytes.Buffer
 	if err := serializeLinkNode(&b, l); err != nil {
@@ -131,12 +130,12 @@ func putLinkNode(nodeMetaBucket *bolt.Bucket, l *LinkNode) error {
 // DeleteLinkNode removes the link node with the given identity from the
 // database.
 func (db *DB) DeleteLinkNode(identity *btcec.PublicKey) error {
-	return db.Update(func(tx *bolt.Tx) error {
+	return db.Update(func(tx *bbolt.Tx) error {
 		return db.deleteLinkNode(tx, identity)
 	})
 }
 
-func (db *DB) deleteLinkNode(tx *bolt.Tx, identity *btcec.PublicKey) error {
+func (db *DB) deleteLinkNode(tx *bbolt.Tx, identity *btcec.PublicKey) error {
 	nodeMetaBucket := tx.Bucket(nodeInfoBucket)
 	if nodeMetaBucket == nil {
 		return ErrLinkNodesNotFound
@@ -150,25 +149,11 @@ func (db *DB) deleteLinkNode(tx *bolt.Tx, identity *btcec.PublicKey) error {
 // identity public key. If a particular LinkNode for the passed identity public
 // key cannot be found, then ErrNodeNotFound if returned.
 func (db *DB) FetchLinkNode(identity *btcec.PublicKey) (*LinkNode, error) {
-	var (
-		node *LinkNode
-		err  error
-	)
-
-	err = db.View(func(tx *bolt.Tx) error {
-		// First fetch the bucket for storing node metadata, bailing
-		// out early if it hasn't been created yet.
-		nodeMetaBucket := tx.Bucket(nodeInfoBucket)
-		if nodeMetaBucket == nil {
-			return ErrLinkNodesNotFound
-		}
-
-		// If a link node for that particular public key cannot be
-		// located, then exit early with an ErrNodeNotFound.
-		pubKey := identity.SerializeCompressed()
-		nodeBytes := nodeMetaBucket.Get(pubKey)
-		if nodeBytes == nil {
-			return ErrNodeNotFound
+	var linkNode *LinkNode
+	err := db.View(func(tx *bbolt.Tx) error {
+		node, err := fetchLinkNode(tx, identity)
+		if err != nil {
+			return err
 		}
 
 		linkNode = node
@@ -206,7 +191,7 @@ func fetchLinkNode(tx *bbolt.Tx, targetPub *btcec.PublicKey) (*LinkNode, error) 
 // whom we have active channels with.
 func (db *DB) FetchAllLinkNodes() ([]*LinkNode, error) {
 	var linkNodes []*LinkNode
-	err := db.View(func(tx *bolt.Tx) error {
+	err := db.View(func(tx *bbolt.Tx) error {
 		nodes, err := db.fetchAllLinkNodes(tx)
 		if err != nil {
 			return err
@@ -224,7 +209,7 @@ func (db *DB) FetchAllLinkNodes() ([]*LinkNode, error) {
 
 // fetchAllLinkNodes uses an existing database transaction to fetch all nodes
 // with whom we have active channels with.
-func (db *DB) fetchAllLinkNodes(tx *bolt.Tx) ([]*LinkNode, error) {
+func (db *DB) fetchAllLinkNodes(tx *bbolt.Tx) ([]*LinkNode, error) {
 	nodeMetaBucket := tx.Bucket(nodeInfoBucket)
 	if nodeMetaBucket == nil {
 		return nil, ErrLinkNodesNotFound

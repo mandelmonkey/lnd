@@ -25,11 +25,11 @@ ios_dest="$ios_dir/Lndmobile.framework"
 echo "Building for iOS now ($ios_dest)..."
 "$GOPATH/bin/gomobile" bind -target=ios -tags="ios" -v -o "$ios_dest" "$package"
 
-android_dir="$build_dir/android"
-mkdir -p $android_dir
-android_dest="$android_dir/Lndmobile.aar"
-echo "Building for Android ($android_dest)..."
-"$GOPATH/bin/gomobile" bind -target=android -tags="android" -v -o "$android_dest" "$package"
+#android_dir="$build_dir/android"
+#mkdir -p $android_dir
+#android_dest="$android_dir/lndmobile.aar"
+#echo "Building for Android ($android_dest)..."
+#"$GOPATH/bin/gomobile" bind -target=android -tags="android" -v -o "$android_dest" "$package"
 
 echo "Cleaning up."
-rm $api_filename
+#rm $api_filename

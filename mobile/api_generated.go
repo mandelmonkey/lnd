@@ -429,6 +429,37 @@ func ListChannels(msg []byte, callback Callback) {
 	s.start(msg, callback)
 }
 
+// SubscribeChannelEvents creates a uni-directional stream from the server to
+// the client in which any updates relevant to the state of the channels are
+// sent over. Events include new active channels, inactive channels, and closed
+// channels.
+//
+// NOTE: This method produces a stream of responses, and the callback
+// can be called zero or more times. After EOF error is returned, no
+// more responses will be produced.
+func SubscribeChannelEvents(msg []byte, callback Callback) {
+	s := &readStreamHandler{
+		newProto: func() proto.Message {
+			return &lnrpc.ChannelEventSubscription{}
+		},
+		recvStream: func(ctx context.Context,
+			client lnrpc.LightningClient,
+			req proto.Message) (*receiver, error) {
+			r := req.(*lnrpc.ChannelEventSubscription)
+			stream, err := client.SubscribeChannelEvents(ctx, r)
+			if err != nil {
+				return nil, err
+			}
+			return &receiver{
+				recv: func() (proto.Message, error) {
+					return stream.Recv()
+				},
+			}, nil
+		},
+	}
+	s.start(msg, callback)
+}
+
 // ClosedChannels returns a description of all the closed channels that 
 // this node was a participant in.
 //
@@ -697,10 +728,8 @@ func AddInvoice(msg []byte, callback Callback) {
 // paginated responses, allowing users to query for specific invoices through
 // their add_index. This can be done by using either the first_index_offset or
 // last_index_offset fields included in the response as the index_offset of the
-// next request. The reversed flag is set by default in order to paginate
-// backwards. If you wish to paginate forwards, you must explicitly set the
-// flag to false. If none of the parameters are specified, then the last 100
-// invoices will be returned.
+// next request. By default, the first 100 invoices created will be returned.
+// Backwards pagination is also supported through the Reversed flag.
 //
 // NOTE: This method produces a single result or error, and the callback
 // will be called only once.
