@@ -9711,11 +9711,19 @@ func (c *lightningClient) SendToRouteSync(ctx context.Context, in *SendToRouteRe
 }
 
 func (c *lightningClient) AddInvoice(ctx context.Context, in *Invoice, opts ...grpc.CallOption) (*AddInvoiceResponse, error) {
+
+	fmt.Println("test log invoice a2")
 	out := new(AddInvoiceResponse)
+
+	fmt.Println("test log invoice a3")
 	err := c.cc.Invoke(ctx, "/lnrpc.Lightning/AddInvoice", in, out, opts...)
+
+	fmt.Println("test log invoice a4")
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println("test log invoice a5")
 	return out, nil
 }
 
@@ -10794,19 +10802,29 @@ func _Lightning_SendToRouteSync_Handler(srv interface{}, ctx context.Context, de
 
 func _Lightning_AddInvoice_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Invoice)
+
+	fmt.Println("test log invoice 2")
 	if err := dec(in); err != nil {
 		return nil, err
 	}
+
+	fmt.Println("test log invoice 3")
 	if interceptor == nil {
 		return srv.(LightningServer).AddInvoice(ctx, in)
 	}
+
+	fmt.Println("test log invoice 4")
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
 		FullMethod: "/lnrpc.Lightning/AddInvoice",
 	}
+
+	fmt.Println("test log invoice 5")
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(LightningServer).AddInvoice(ctx, req.(*Invoice))
 	}
+
+	fmt.Println("test log invoice 6")
 	return interceptor(ctx, in, info, handler)
 }
 
