@@ -13,7 +13,6 @@ import (
 )
 
 var (
-	invoicesLis  = bufconn.Listen(100)
 	lightningLis = bufconn.Listen(100)
 	unlockerLis  = bufconn.Listen(100)
 )
@@ -345,11 +344,6 @@ type readStreamHandler struct {
 	// recvStream calls the given client with the request and returns a
 	// receiver that reads the stream of responses.
 	recvStream func(context.Context, lnrpc.LightningClient,
-		proto.Message) (*receiver, error)
-
-	// recvStream calls the given client with the request and returns a
-	// receiver that reads the stream of responses.
-	recvStream2 func(context.Context, invoicesrpc.InvoicesClient,
 		proto.Message) (*receiver, error)
 }
 

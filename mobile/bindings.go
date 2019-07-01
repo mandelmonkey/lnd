@@ -18,7 +18,7 @@ func Start(appDir string, callback Callback) {
 	// Call the "real" main in a nested manner so the defers will properly
 	// be executed in the case of a graceful shutdown.
 	go func() {
-		if err := daemon.LndMain(appDir, lightningLis, unlockerLis, invoicesLis); err != nil {
+		if err := daemon.LndMain(appDir, lightningLis, unlockerLis); err != nil {
 			if e, ok := err.(*flags.Error); ok &&
 				e.Type == flags.ErrHelp {
 			} else {

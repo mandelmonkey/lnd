@@ -1069,6 +1069,8 @@ func (s *server) Started() bool {
 // goroutines.
 // NOTE: This function is safe for concurrent access.
 func (s *server) Start() error {
+
+	fmt.Println("start rpc 1")
 	var startErr error
 	s.start.Do(func() {
 		if s.torController != nil {
@@ -1083,6 +1085,7 @@ func (s *server) Start() error {
 			go s.watchExternalIP()
 		}
 
+		fmt.Println("start rpc 2")
 		// Start the notification server. This is used so channel
 		// management goroutines can be notified when a funding
 		// transaction reaches a sufficient number of confirmations, or
@@ -1153,6 +1156,7 @@ func (s *server) Start() error {
 			return
 		}
 
+		fmt.Println("start rpc 3")
 		// Before we start the connMgr, we'll check to see if we have
 		// any backups to recover. We do this now as we want to ensure
 		// that have all the information we need to handle channel
@@ -1192,6 +1196,8 @@ func (s *server) Start() error {
 
 		s.connMgr.Start()
 
+		fmt.Println("start rpc 4")
+
 		// With all the relevant sub-systems started, we'll now attempt
 		// to establish persistent connections to our direct channel
 		// collaborators within the network. Before doing so however,
@@ -1228,6 +1234,10 @@ func (s *server) Start() error {
 
 		// Set the active flag now that we've completed the full
 		// startup.
+
+		fmt.Println("start rpc 5")
+
+		fmt.Println("setting active")
 		atomic.StoreInt32(&s.active, 1)
 	})
 

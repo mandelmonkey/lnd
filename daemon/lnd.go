@@ -92,7 +92,7 @@ var (
 // Main is the true entry point for lnd. This function is required since defers
 // created in the top-level scope of a main method aren't executed if os.Exit()
 // is called.
-func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener, invoicesLis net.Listener) error {
+func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener) error {
 	// Load the configuration, and parse any command line options. This
 	// function will also set up logging properly.
 	loadedConfig, err := loadConfig(appDir)
@@ -107,10 +107,6 @@ func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener,
 			}
 			if lightningLis != nil {
 				defer lightningLis.Close()
-			}
-
-			if invoicesLis != nil {
-				defer invoicesLis.Close()
 			}
 			ltndLog.Info("Shutdown complete")
 			logRotator.Close()
@@ -230,6 +226,7 @@ func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener,
 	// We wait until the user provides a password over RPC. In case lnd is
 	// started with the --noseedbackup flag, we use the default password
 	// for wallet encryption.
+
 	if !cfg.NoSeedBackup {
 		params, err := waitForWalletPassword(
 			cfg.RPCListeners, cfg.RESTListeners, serverOpts,
@@ -355,116 +352,35 @@ func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener,
 
 	// Initialize, and register our implementation of the gRPC interface
 	// exported by the rpcServer.
+	if lightningLis != nil {
+
+		defer lightningLis.Close()
+	}
 	rpcServer, err := newRPCServer(
 		server, macaroonService, cfg.SubRPCServers, serverOpts,
 		restDialOpts, restProxyDest, atplManager, server.invoices,
 		tlsCfg,
 	)
+
 	if err != nil {
 		srvrLog.Errorf("unable to start RPC server: %v", err)
 		return err
 	}
-	if err := rpcServer.Start(); err != nil {
+
+	if err := rpcServer.Start(lightningLis); err != nil {
+
+		rpcsLog.Infof("error")
 		return err
 	}
+
 	defer rpcServer.Stop()
-
-	serverOpts = []grpc.ServerOption{} // This is added here to remove macaroon?
-	grpcServer := grpc.NewServer(serverOpts...)
-	lnrpc.RegisterLightningServer(grpcServer, rpcServer)
-
-	rpcsLog.Infof("checkpoint 11")
-	if lightningLis != nil {
-		rpcsLog.Infof("lightningLis is not nil", lightningLis.Addr())
-		defer lightningLis.Close()
-		go func() {
-			rpcsLog.Infof("RPC server listening on %s", lightningLis.Addr())
-			grpcServer.Serve(lightningLis)
-		}()
-	} else { /*
-			rpcsLog.Infof("starting lighting lis")
-			// Next, Start the gRPC server listening for HTTP/2 connections.
-			for _, listener := range cfg.RPCListeners {
-				lis, err := lncfg.ListenOnAddress(listener)
-				if err != nil {
-					ltndLog.Errorf(
-						"RPC server unable to listen on %s", listener,
-					)
-					return err
-				}
-				defer lis.Close()
-				go func() {
-					rpcsLog.Infof("RPC server listening on %s", lis.Addr())
-					grpcServer.Serve(lis)
-				}()
-			}
-
-			// Finally, start the REST proxy for our gRPC server above.
-			mux := proxy.NewServeMux()
-			err = lnrpc.RegisterLightningHandlerFromEndpoint(
-				ctx, mux, cfg.RPCListeners[0].String(), restDialOpts,
-			)
-			if err != nil {
-				return err
-			}
-			for _, restEndpoint := range cfg.RESTListeners {
-				lis, err := lncfg.TLSListenOnAddress(restEndpoint, tlsCfg)
-				if err != nil {
-					ltndLog.Errorf(
-						"gRPC proxy unable to listen on %s",
-						restEndpoint,
-					)
-					return err
-				}
-				defer lis.Close()
-				go func() {
-					rpcsLog.Infof("gRPC proxy started at %s", lis.Addr())
-					http.Serve(lis, mux)
-				}()
-			}*/
-	}
-
-	// The macaroon files are passed to the wallet unlocker since they are
-	// also encrypted with the wallet's password. These files will be
-	// deleted within it and recreated when successfully changing the
-	// wallet's password.
-
-	/*
-		macaroonFiles := []string{
-			filepath.Join(networkDir, macaroons.DBFilename),
-			cfg.AdminMacPath, cfg.ReadMacPath, cfg.InvoiceMacPath,
-		}
-
-		invoicesService := invoicesrpc.New(
-			cfg,
-		)
-
-		invoicesrpc.RegisterInvoicesServer(grpcServer, invoicesService)
-
-		if invoicesLis != nil {
-			rpcsLog.Infof("invoicesLis not nil %s", invoicesLis)
-
-			serverOpts = []grpc.ServerOption{} // This is added here to remove TLS?
-			grpcServer := grpc.NewServer(serverOpts...)
-			invoicesrpc.RegisterInvoicesServer(grpcServer, invoicesService)
-
-			defer invoicesLis.Close()
-
-			go func() {
-				rpcsLog.Infof("invoicesLis server listening on %s", invoicesLis.Addr())
-
-				grpcServer.Serve(invoicesLis)
-			}()
-		} else {
-
-
-		}*/
 
 	// If we're not in simnet mode, We'll wait until we're fully synced to
 	// continue the start up of the remainder of the daemon. This ensures
 	// that we don't accept any possibly invalid state transitions, or
 	// accept channels with spent funds.
 	if !(cfg.Bitcoin.SimNet || cfg.Litecoin.SimNet) {
+
 		_, bestHeight, err := activeChainControl.chainIO.GetBestBlock()
 		if err != nil {
 			return err
@@ -501,6 +417,7 @@ func LndMain(appDir string, lightningLis net.Listener, unlockerLis net.Listener,
 
 	// With all the relevant chains initialized, we can finally start the
 	// server itself.
+
 	if err := server.Start(); err != nil {
 		srvrLog.Errorf("unable to start server: %v\n", err)
 		return err
@@ -836,7 +753,6 @@ func waitForWalletPassword(grpcEndpoints, restEndpoints []net.Addr,
 	// password is the last thing to be printed to the console.
 	var wg sync.WaitGroup
 	if unlockerLis != nil {
-		rpcsLog.Infof("unlockernot nil %s", unlockerLis)
 
 		serverOpts = []grpc.ServerOption{} // This is added here to remove TLS?
 		grpcServer := grpc.NewServer(serverOpts...)

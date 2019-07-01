@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net/http"
+	"net"
 	"sort"
 	"strings"
 	"sync"
@@ -29,7 +29,6 @@ import (
 	"github.com/btcsuite/btcwallet/wallet/txauthor"
 	"github.com/coreos/bbolt"
 	"github.com/davecgh/go-spew/spew"
-	proxy "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/lightningnetwork/lnd/autopilot"
 	"github.com/lightningnetwork/lnd/build"
 	"github.com/lightningnetwork/lnd/chanbackup"
@@ -39,7 +38,6 @@ import (
 	"github.com/lightningnetwork/lnd/htlcswitch"
 	"github.com/lightningnetwork/lnd/input"
 	"github.com/lightningnetwork/lnd/invoices"
-	"github.com/lightningnetwork/lnd/lncfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/lnrpc/invoicesrpc"
 	"github.com/lightningnetwork/lnd/lntypes"
@@ -548,7 +546,10 @@ func newRPCServer(s *server, macService *macaroons.Service,
 
 	// Finally, with all the pre-set up complete,  we can create the main
 	// gRPC server, and register the main lnrpc server along side.
+
+	serverOpts = []grpc.ServerOption{} // This is added here to remove macaroon?
 	grpcServer := grpc.NewServer(serverOpts...)
+
 	rootRPCServer := &rpcServer{
 		restDialOpts:  restDialOpts,
 		restProxyDest: restProxyDest,
@@ -577,7 +578,7 @@ func newRPCServer(s *server, macService *macaroons.Service,
 }
 
 // Start launches any helper goroutines required for the rpcServer to function.
-func (r *rpcServer) Start() error {
+func (r *rpcServer) Start(lightningLis net.Listener) error {
 	if atomic.AddInt32(&r.started, 1) != 1 {
 		return nil
 	}
@@ -594,10 +595,49 @@ func (r *rpcServer) Start() error {
 			return err
 		}
 	}
+	/*
+		for _, listener := range cfg.RPCListeners {
+			lis, err := lncfg.ListenOnAddress(listener)
+			if err != nil {
+				ltndLog.Errorf(
+					"RPC server unable to listen on %s", listener,
+				)
+				return err
+			}
+
+			r.listenerCleanUp = append(r.listenerCleanUp, func() {
+				lis.Close()
+			})
+
+			 go func() {
+				rpcsLog.Infof("RPC server listening on %s", lis.Addr())
+
+				r.grpcServer.Serve(lis)
+			}()
+		}*/
+
+	/*lis, err := lncfg.ListenOnAddress(lightningLis.Addr())
+	if err != nil {
+		ltndLog.Errorf(
+			"RPC server unable to listen on %s", lightningLis.Addr(),
+		)
+		return err
+	}*/
+
+	r.listenerCleanUp = append(r.listenerCleanUp, func() {
+		lightningLis.Close()
+	})
+
+	rpcsLog.Infof("RPC server listening on %s", lightningLis.Addr())
+	go func() {
+		r.grpcServer.Serve(lightningLis)
+	}()
+
+	rpcsLog.Infof("made it here")
 
 	// With all the sub-servers started, we'll spin up the listeners for
 	// the main RPC server itself.
-	for _, listener := range cfg.RPCListeners {
+	/*for _, listener := range cfg.RPCListeners {
 		lis, err := lncfg.ListenOnAddress(listener)
 		if err != nil {
 			ltndLog.Errorf(
@@ -612,9 +652,10 @@ func (r *rpcServer) Start() error {
 
 		go func() {
 			rpcsLog.Infof("RPC server listening on %s", lis.Addr())
+
 			r.grpcServer.Serve(lis)
 		}()
-	}
+	}*/
 
 	// Finally, start the REST proxy for our gRPC server above. We'll ensure
 	// we direct LND to connect to its loopback address rather than a
@@ -623,7 +664,7 @@ func (r *rpcServer) Start() error {
 	//
 	// TODO(roasbeef): eventually also allow the sub-servers to themselves
 	// have a REST proxy.
-	mux := proxy.NewServeMux()
+	/*mux := proxy.NewServeMux()
 
 	err := lnrpc.RegisterLightningHandlerFromEndpoint(
 		context.Background(), mux, r.restProxyDest,
@@ -650,7 +691,8 @@ func (r *rpcServer) Start() error {
 			rpcsLog.Infof("gRPC proxy started at %s", lis.Addr())
 			http.Serve(lis, mux)
 		}()
-	}
+	}*/
+	rpcsLog.Infof("made it here 2")
 
 	return nil
 }

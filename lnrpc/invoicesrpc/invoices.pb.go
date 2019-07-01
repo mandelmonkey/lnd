@@ -456,19 +456,11 @@ func (c *invoicesClient) CancelInvoice(ctx context.Context, in *CancelInvoiceMsg
 }
 
 func (c *invoicesClient) AddHoldInvoice(ctx context.Context, in *AddHoldInvoiceRequest, opts ...grpc.CallOption) (*AddHoldInvoiceResp, error) {
-
-	fmt.Println("test log 5")
 	out := new(AddHoldInvoiceResp)
-
-	fmt.Println("test log 6")
 	err := c.cc.Invoke(ctx, "/invoicesrpc.Invoices/AddHoldInvoice", in, out, opts...)
-
-	fmt.Println("test log 7")
 	if err != nil {
 		return nil, err
 	}
-
-	fmt.Println("test log 8")
 	return out, nil
 }
 
